@@ -8,10 +8,20 @@
 
 cudaError_t addWithCuda(int *c, int *a, int *b, unsigned int size);
 
+/*
 __global__ void addKernel(int n, int *c, int *a, int *b)
 {
 	int index = threadIdx.x;
 	int stride = blockDim.x;
+	for (int i = index; i < n; i += stride)
+		c[i] = a[i] + b[i];
+}
+*/
+
+__global__ void addKernel(int n, int *c, int *a, int *b)
+{
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	int stride = blockDim.x * gridDim.x;
 	for (int i = index; i < n; i += stride)
 		c[i] = a[i] + b[i];
 }
@@ -28,11 +38,6 @@ int main()
 		b[i] = i * 2;
 	}
 
-	// Variables to keep track of, to only count adding
-	std::clock_t start;
-	double duration;
-	start = std::clock();
-
     // Add vectors in parallel.
     cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
     if (cudaStatus != cudaSuccess) {
@@ -41,10 +46,6 @@ int main()
     }
 
     printf("{%d,%d,%d,%d,%d}\n", c[50], c[51], c[20000], c[322], c[434]);
-
-	duration = (std::clock() - start) / (double)CLOCKS_PER_SEC * 1000.0;
-
-	fprintf(stderr, "Time: %d ms", duration);
 
     // cudaDeviceReset must be called before exiting in order for profiling and
     // tracing tools such as Nsight and Visual Profiler to show complete traces.
@@ -73,8 +74,11 @@ cudaError_t addWithCuda(int *c, int *a, int *b, unsigned int size)
     cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
 
+	int blockSize = 256;
+	int numBlocks = (size + blockSize - 1) / blockSize;
+
     // Launch a kernel on the GPU with one thread for each element.
-	addKernel<<<1, 256>>>(size, dev_c, dev_a, dev_b);
+	addKernel<<<numBlocks, blockSize>>>(size, dev_c, dev_a, dev_b);
 
     // Check for any errors launching the kernel
 	cudaError_t cudaStatus = cudaGetLastError();
